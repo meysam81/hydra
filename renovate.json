@@ -1,0 +1,63 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>meysam81/.github",
+    "security:gomodIndirectSecurityUpdates",
+    ":disableDependencyDashboard"
+  ],
+  "forkProcessing": "enabled",
+  "enabledManagers": [
+    "dockerfile",
+    "github-actions",
+    "gomod"
+  ],
+  "includePaths": [
+    ".docker/Dockerfile-rebuild",
+    ".github/workflows/rebuild.yml",
+    "go.mod"
+  ],
+  "packageRules": [
+    {
+      "description": "Go modules stay on upstream's versions and move only for a published vulnerability (vulnerability alerts override this)",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch",
+        "pin",
+        "digest",
+        "pinDigest",
+        "lockFileMaintenance",
+        "rollback",
+        "replacement"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Go patch releases are security releases: no release-age wait",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "golang"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "digest"
+      ],
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "description": "The test databases follow upstream's CI at the release tag",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "enabled": false
+    }
+  ]
+}

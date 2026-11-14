@@ -1,3 +1,29 @@
+> [!NOTE]
+> **This is a fork of [ory/hydra](https://github.com/ory/hydra), not an Ory
+> project.** It rebuilds released versions of Ory Hydra with a current Go
+> toolchain and patched dependencies, so security fixes ship between upstream
+> releases. The Hydra source is unchanged.
+>
+> - Each `patched-vX.Y.Z` branch is the upstream tag `vX.Y.Z` plus:
+>   dependency bumps in `go.mod` / `go.sum`, the image build
+>   (`.docker/Dockerfile-rebuild`), this fork's CI
+>   (`.github/workflows/rebuild.yml`, replacing upstream's workflows) and
+>   `renovate.json`.
+> - Images: `ghcr.io/meysam81/hydra:vX.Y.Z`, the distroless build for
+>   `linux/amd64` and `linux/arm64`. The tag moves with every rebuild, so pin it
+>   by digest.
+> - Every image passes upstream's test suite and is signed with cosign
+>   (keyless), with SBOM and SLSA provenance attached:
+>
+>   ```sh
+>   cosign verify ghcr.io/meysam81/hydra:v26.2.0 \
+>     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+>     --certificate-identity-regexp '^https://github.com/meysam81/hydra/\.github/workflows/rebuild\.yml@refs/heads/patched-v'
+>   ```
+>
+> Report Hydra bugs and vulnerabilities upstream. Everything below is upstream's
+> README.
+
 <h1 align="center">
   <img src="https://raw.githubusercontent.com/ory/meta/master/static/banners/hydra.svg" alt="Ory Hydra - Open Source OAuth 2 and OpenID Connect server">
 </h1>
