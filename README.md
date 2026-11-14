@@ -2,13 +2,14 @@
 > **This is a fork of [ory/hydra](https://github.com/ory/hydra), not an Ory
 > project.** It rebuilds released versions of Ory Hydra with a current Go
 > toolchain and patched dependencies, so security fixes ship between upstream
-> releases. The Hydra source is unchanged.
+> releases. Hydra's own code is unchanged, apart from upstream commits
+> cherry-picked from `master` where a bumped dependency needs them.
 >
 > - Each `patched-vX.Y.Z` branch is the upstream tag `vX.Y.Z` plus:
->   dependency bumps in `go.mod` / `go.sum`, the image build
->   (`.docker/Dockerfile-rebuild`), this fork's CI
->   (`.github/workflows/rebuild.yml`, replacing upstream's workflows) and
->   `renovate.json`.
+>   dependency bumps in `go.mod` / `go.sum`, those cherry-picks (each names its
+>   upstream commit), the image build (`.docker/Dockerfile-rebuild`), this
+>   fork's CI (`.github/workflows/rebuild.yml`, replacing upstream's workflows)
+>   and `renovate.json`.
 > - Images: `ghcr.io/meysam81/hydra:vX.Y.Z`, the distroless build for
 >   `linux/amd64` and `linux/arm64`. The tag moves with every rebuild, so pin it
 >   by digest.
