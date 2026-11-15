@@ -532,3 +532,43 @@ func TestManagerLogsRejectedIDsAtDebug(t *testing.T) {
 	}
 	assert.Contains(t, outcomes(), "capped")
 }
+
+// One failed refetch is one stale_served line, however many requests waited
+// on it: HydraCIMDFetchFailing counts these lines.
+func TestManagerStaleServedLoggedOncePerFlight(t *testing.T) {
+	f := newFixture(t, nil)
+	hook := &logtest.Hook{}
+	l := logrusx.New("", "", logrusx.WithHook(hook), logrusx.ForceLevel(logrus.InfoLevel))
+	issuer, _ := url.Parse("https://oauth2.example.com")
+	m := cimd.NewManager(f.reg.Persister(), f.reg.ClientManager(), f.reg.ClientValidator(),
+		&cimd.Fetcher{HTTP: cimdtest.Transport(f.srv.Server), MinTTL: 5 * time.Minute, MaxTTL: 24 * time.Hour},
+		cimd.Defaults{Scope: []string{"read"}}, issuer, l, f.clock.Now)
+	f.serveClaude(t, "https://claude.ai/cb")
+	_, err := m.GetClient(t.Context(), claudeID)
+	require.NoError(t, err)
+
+	f.clock.Add(6 * time.Minute)
+	release := make(chan struct{})
+	f.srv.Set(claudeID, cimdtest.Response{Status: http.StatusInternalServerError, Block: release})
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := m.GetClient(context.Background(), claudeID)
+			assert.NoError(t, err)
+		}()
+	}
+	require.Eventually(t, func() bool { return f.srv.InFlight() == 1 }, 5*time.Second, 10*time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	n := 0
+	for _, e := range hook.AllEntries() {
+		if e.Data["cimd_outcome"] == "stale_served" {
+			n++
+		}
+	}
+	assert.Equal(t, 1, n)
+}

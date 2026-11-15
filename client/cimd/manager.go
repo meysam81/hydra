@@ -161,6 +161,11 @@ func (m *Manager) GetClient(ctx context.Context, id string) (fosite.Client, erro
 			m.remember(id, m.now(), true)
 		case errors.Is(err, ErrTransient):
 			m.remember(id, m.now(), false)
+			if row != nil {
+				// Once per failed refetch, not per waiting request: the
+				// HydraCIMDFetchFailing alert counts these lines.
+				m.log(id, "stale_served", err)
+			}
 		}
 		return c, err
 	})
@@ -177,7 +182,6 @@ func (m *Manager) GetClient(ctx context.Context, id string) (fosite.Client, erro
 		return nil, errInvalidClient
 	case errors.Is(err, ErrTransient):
 		if row != nil {
-			m.log(id, "stale_served", err)
 			return row, nil
 		}
 		return nil, errInvalidClient
