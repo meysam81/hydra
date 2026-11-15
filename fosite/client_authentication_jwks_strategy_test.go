@@ -176,3 +176,33 @@ func TestDefaultJWKSFetcherStrategy(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestJWKSFetchSizeLimit(t *testing.T) {
+	ctx := context.Background()
+	small := &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{KeyID: "k", Use: "sig", Key: &gen.MustRSAKey().PublicKey}}}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/big" {
+			// A valid JSON prefix that never ends within the cap.
+			_, _ = w.Write([]byte(`{"keys":[{"kty":"oct","k":"`))
+			pad := make([]byte, 64<<10)
+			for i := range pad {
+				pad[i] = 'A'
+			}
+			for i := 0; i < 32; i++ { // 2 MiB
+				_, _ = w.Write(pad)
+			}
+			_, _ = w.Write([]byte(`"}]}`))
+			return
+		}
+		require.NoError(t, json.NewEncoder(w).Encode(small))
+	}))
+	defer ts.Close()
+
+	s := NewDefaultJWKSFetcherStrategy()
+	_, err := s.Resolve(ctx, ts.URL+"/big", true)
+	require.Error(t, err, "a key set over 1 MiB is refused, not decoded")
+
+	keys, err := s.Resolve(ctx, ts.URL+"/small", true)
+	require.NoError(t, err)
+	assert.Len(t, keys.Key("k"), 1)
+}
