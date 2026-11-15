@@ -416,3 +416,62 @@ func TestManagerCreatedClientHasUnusableSecret(t *testing.T) {
 	require.NotEmpty(t, row.Secret)
 	assert.Error(t, f.reg.ClientHasher().Compare(t.Context(), []byte(row.Secret), []byte("")), "an empty client_secret must not authenticate")
 }
+
+// Concurrent callers of a failing fetch share one result; the failure must
+// still be remembered, or the host is fetched again on the next request.
+func TestManagerConcurrentFailureNegativeCached(t *testing.T) {
+	f := newFixture(t, nil)
+	release := make(chan struct{})
+	f.srv.Set(claudeID, cimdtest.Response{Status: http.StatusInternalServerError, Block: release})
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = f.m.GetClient(context.Background(), claudeID)
+		}()
+	}
+	require.Eventually(t, func() bool { return f.srv.InFlight() == 1 }, 5*time.Second, 10*time.Millisecond)
+	time.Sleep(50 * time.Millisecond) // let the other two join the flight
+	close(release)
+	wg.Wait()
+
+	_, err := f.m.GetClient(t.Context(), claudeID)
+	requireInvalidClient(t, err)
+	assert.Equal(t, 1, f.srv.Hits(claudeID), "the shared failure is negative-cached")
+}
+
+// With the real validator, a default scope of only openid must not come back
+// through Hydra's empty-scope default.
+func TestManagerNeverStoresOpenID(t *testing.T) {
+	f := newFixture(t, nil)
+	issuer, _ := url.Parse("https://oauth2.example.com")
+	m := cimd.NewManager(f.reg.Persister(), f.reg.ClientManager(), f.reg.ClientValidator(),
+		&cimd.Fetcher{HTTP: cimdtest.Transport(f.srv.Server), MinTTL: 5 * time.Minute, MaxTTL: 24 * time.Hour},
+		cimd.Defaults{Scope: []string{"openid"}}, issuer, f.reg.Logger(), f.clock.Now)
+	f.serveClaude(t, "https://claude.ai/cb")
+	_, err := m.GetClient(t.Context(), claudeID)
+	requireInvalidClient(t, err)
+	_, err = f.reg.ClientManager().GetConcreteClient(t.Context(), claudeID)
+	require.Error(t, err, "no row with a refilled scope")
+}
+
+// A config reload can turn the private-range guard off after startup: the
+// manager must not keep fetching without it.
+func TestFositeClientManagerFailsClosedWithoutGuard(t *testing.T) {
+	reg := testhelpers.NewRegistryMemory(t, driver.WithConfigOptions(configx.WithValues(map[string]any{
+		config.KeyClientHTTPNoPrivateIPRanges: true,
+		config.KeyCIMDEnabled:                 true,
+	})))
+	_, isManager := reg.FositeClientManager().(*cimd.Manager)
+	require.True(t, isManager)
+
+	reg.Config().MustSet(t.Context(), config.KeyClientHTTPNoPrivateIPRanges, false)
+	_, isManager = reg.FositeClientManager().(*cimd.Manager)
+	assert.False(t, isManager, "guard off: no fetching")
+
+	reg.Config().MustSet(t.Context(), config.KeyClientHTTPNoPrivateIPRanges, true)
+	reg.Config().MustSet(t.Context(), config.KeyClientHTTPPrivateIPExceptionURLs, []string{"https://x.example/*"})
+	_, isManager = reg.FositeClientManager().(*cimd.Manager)
+	assert.False(t, isManager, "exception URLs: no fetching")
+}

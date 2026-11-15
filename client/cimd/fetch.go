@@ -27,7 +27,7 @@ var ErrTransient = errors.New("cimd: client metadata document unavailable")
 // it dials only global unicast addresses on port 443 (checked on the resolved
 // address at dial time, so DNS rebinding cannot reach a private range), uses
 // no proxy, follows no redirect, keeps no cookies, retries nothing and sends
-// no tracing headers.
+// no tracing headers, and keeps no idle connection.
 func NewHTTPClient() *http.Client {
 	dialer := &net.Dialer{Timeout: fetchTimeout, Control: ssrf.New(ssrf.WithPorts(443)).Safe}
 	return &http.Client{
@@ -38,6 +38,9 @@ func NewHTTPClient() *http.Client {
 			ResponseHeaderTimeout:  fetchTimeout,
 			MaxResponseHeaderBytes: 16 << 10,
 			ForceAttemptHTTP2:      true,
+			// One-shot fetches to attacker-chosen hosts: never park a
+			// connection.
+			DisableKeepAlives: true,
 		},
 		Timeout:       fetchTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },

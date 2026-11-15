@@ -49,6 +49,11 @@ func ValidateClientIDURL(id string, issuer *url.URL) error {
 	if !IsClientIDURL(id) {
 		return invalid("client_id is not an https URL")
 	}
+	// Printable ASCII only: the consent page names the host, and a look-alike
+	// (Cyrillic "а" in claude.ai) must show as punycode, not as claude.ai.
+	if strings.IndexFunc(id, func(r rune) bool { return r <= ' ' || r > '~' }) >= 0 {
+		return invalid("client_id is not printable ASCII")
+	}
 	u, err := url.Parse(id)
 	switch {
 	case err != nil:
@@ -68,10 +73,16 @@ func ValidateClientIDURL(id string, issuer *url.URL) error {
 	case issuer != nil && strings.EqualFold(u.Hostname(), issuer.Hostname()):
 		return invalid("client_id is on the issuer's host")
 	}
+	if strings.IndexFunc(u.Hostname(), func(r rune) bool { return r <= ' ' || r > '~' }) >= 0 {
+		return invalid("client_id host is not printable ASCII")
+	}
 	for _, seg := range strings.Split(u.EscapedPath(), "/") {
 		dec, err := url.PathUnescape(seg)
 		if err != nil || dec == "." || dec == ".." {
 			return invalid("client_id path has a dot segment")
+		}
+		if strings.IndexFunc(dec, func(r rune) bool { return r < ' ' || r == 0x7f }) >= 0 {
+			return invalid("client_id path has a control character")
 		}
 	}
 	return nil
@@ -178,6 +189,11 @@ func ParseDocument(id string, body []byte, d Defaults) (*client.Client, error) {
 	// openid is never granted: fosite parses request objects before it checks
 	// scope, and the stored scope is what then refuses them.
 	allowed := slices.DeleteFunc(slices.Clone(d.Scope), func(s string) bool { return s == "openid" })
+	if len(allowed) == 0 {
+		// An empty scope would be refilled by Hydra's validator from the
+		// default, openid included.
+		return nil, invalid("no scope is grantable to a metadata-document client")
+	}
 	scope := allowed
 	if strings.TrimSpace(doc.Scope) != "" {
 		scope = intersect(strings.Fields(doc.Scope), allowed)

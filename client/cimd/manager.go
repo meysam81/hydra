@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -147,7 +149,18 @@ func (m *Manager) GetClient(ctx context.Context, id string) (fosite.Client, erro
 	// first caller so its cancellation does not fail the others.
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*fetchTimeout)
 	defer cancel()
-	v, err, shared := m.group.Do(id, func() (any, error) { return m.resolve(fetchCtx, id) })
+	// The failure is remembered inside the flight: Do reports shared=true to
+	// every caller, the one that fetched included, once others joined.
+	v, err, _ := m.group.Do(id, func() (any, error) {
+		c, err := m.resolve(fetchCtx, id)
+		switch {
+		case errors.Is(err, ErrInvalid):
+			m.remember(id, m.now(), true)
+		case errors.Is(err, ErrTransient):
+			m.remember(id, m.now(), false)
+		}
+		return c, err
+	})
 	if err == nil {
 		return v.(*client.Client), nil
 	}
@@ -158,18 +171,10 @@ func (m *Manager) GetClient(ctx context.Context, id string) (fosite.Client, erro
 		}
 		return nil, errInvalidClient
 	case errors.Is(err, ErrInvalid):
-		if !shared {
-			m.remember(id, now, true)
-		}
 		return nil, errInvalidClient
 	case errors.Is(err, ErrTransient):
-		if !shared {
-			m.remember(id, now, false)
-		}
 		if row != nil {
-			if !shared {
-				m.log(id, "stale_served", err)
-			}
+			m.log(id, "stale_served", err)
 			return row, nil
 		}
 		return nil, errInvalidClient
@@ -213,6 +218,12 @@ func (m *Manager) resolve(ctx context.Context, id string) (_ *client.Client, err
 		}
 		outcome = "invalid"
 		return nil, errors.Wrap(ErrInvalid, err.Error())
+	}
+	if slices.Contains(strings.Fields(c.Scope), "openid") {
+		// Belt to ParseDocument's braces: request objects are refused only
+		// while the stored scope lacks openid.
+		outcome = "invalid"
+		return nil, errors.Wrap(ErrInvalid, "scope would include openid")
 	}
 
 	existing, err := m.store.GetConcreteClient(ctx, id)

@@ -143,3 +143,11 @@ func TestNewHTTPClientRefusesPrivateAndRedirects(t *testing.T) {
 	assert.Nil(t, hc.Jar)
 	assert.Equal(t, 5*time.Second, hc.Timeout)
 }
+
+// A document fetch is one-shot: an idle connection per attacker-chosen host
+// would pile up file descriptors and memory.
+func TestNewHTTPClientKeepsNoIdleConnections(t *testing.T) {
+	tr, ok := cimd.NewHTTPClient().Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.True(t, tr.DisableKeepAlives)
+}

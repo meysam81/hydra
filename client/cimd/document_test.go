@@ -187,3 +187,23 @@ func TestParseDocumentScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "offline_access read", c.Scope, "openid is never granted to a metadata-document client")
 }
+
+func TestParseDocumentNoGrantableScope(t *testing.T) {
+	const id = "https://app.example/client.json"
+	_, err := cimd.ParseDocument(id, doc(t, id, nil), cimd.Defaults{Scope: []string{"openid"}})
+	assert.ErrorIs(t, err, cimd.ErrInvalid, "nothing left once openid is removed: refuse, never let the validator refill it")
+}
+
+func TestValidateClientIDURLASCIIOnly(t *testing.T) {
+	issuer, _ := url.Parse("https://oauth2.example.com")
+	for _, id := range []string{
+		"https://clаude.ai/x", // Cyrillic a: renders as claude.ai
+		"https://cl%D0%B0ude.ai/x",
+		"https://claude.ai/a b",
+		"https://claude.ai/a b",
+		"https://claude.ai/a%00b",
+	} {
+		assert.ErrorIs(t, cimd.ValidateClientIDURL(id, issuer), cimd.ErrInvalid, "%q", id)
+	}
+	assert.NoError(t, cimd.ValidateClientIDURL("https://xn--clude-6ve.ai/x", issuer), "punycode stays visible as such")
+}

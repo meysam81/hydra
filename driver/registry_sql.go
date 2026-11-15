@@ -113,6 +113,12 @@ func (m *RegistrySQL) FositeClientManager() fosite.ClientManager {
 	if !m.Config().CIMDEnabled(ctx) {
 		return m.OAuth2Storage()
 	}
+	// config.Validate checks this at startup; a reload can still drop the
+	// guard, and then nothing is fetched (stored rows keep working).
+	if !m.Config().ClientHTTPNoPrivateIPRanges() || len(m.Config().ClientHTTPPrivateIPExceptionURLs()) > 0 {
+		m.Logger().Error("client_id_metadata_document is on but the private-range guard is not: not fetching metadata documents")
+		return m.OAuth2Storage()
+	}
 	m.cimdOnce.Do(func() {
 		hc := m.cimdHTTPClient
 		if hc == nil {
