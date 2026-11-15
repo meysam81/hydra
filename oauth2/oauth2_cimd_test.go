@@ -276,6 +276,48 @@ func TestCIMDPrivateKeyJWTFlow(t *testing.T) {
 	assert.Equal(t, "invalid_client", body.Get("error").String())
 }
 
+// A private_key_jwt client whose keys are at a jwks_uri, fetched with the
+// document client while CIMD is on.
+func TestCIMDPrivateKeyJWTWithJWKSURI(t *testing.T) {
+	const jwksURL = "https://chatgpt.example/oauth/jwks.json"
+	serveClient := func(e *cimdEnv) {
+		e.serve(chatgptLikeID, map[string]any{
+			"redirect_uris": []string{"https://chatgpt.example/cb"}, "grant_types": []string{"authorization_code", "refresh_token"},
+			"token_endpoint_auth_method": "private_key_jwt", "token_endpoint_auth_signing_alg": "RS256", "jwks_uri": jwksURL,
+		})
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		e := newCIMDEnv(t, "", true, true, nil)
+		key, jwks := clientKey(t)
+		serveClient(e)
+		body, _ := json.Marshal(jwks)
+		e.docs.Set(jwksURL, cimdtest.Response{Body: body})
+		tok := e.codeFlow(t, chatgptLikeID, "https://chatgpt.example/cb", e.assertion(t, key))
+		assert.NotEmpty(t, tok.Get("access_token").String())
+	})
+
+	t.Run("redirect", func(t *testing.T) {
+		e := newCIMDEnv(t, "", true, true, nil)
+		key, jwks := clientKey(t)
+		serveClient(e)
+		const target = "https://chatgpt.example/oauth/real-jwks.json"
+		body, _ := json.Marshal(jwks)
+		e.docs.Set(jwksURL, cimdtest.Response{Status: http.StatusFound, Header: http.Header{"Location": []string{target}}})
+		e.docs.Set(target, cimdtest.Response{Body: body})
+
+		p := newPKCE()
+		loc := e.authorize(t, http.MethodGet, authorizeParams(chatgptLikeID, "https://chatgpt.example/cb", "offline_access read", p))
+		form := url.Values{"grant_type": {"authorization_code"}, "code": {loc.Query().Get("code")}, "redirect_uri": {"https://chatgpt.example/cb"}, "client_id": {chatgptLikeID}, "code_verifier": {p.verifier}}
+		for k, v := range e.assertion(t, key) {
+			form[k] = v
+		}
+		status, res := e.token(t, form)
+		assert.NotEqual(t, http.StatusOK, status, res.Raw)
+		assert.Zero(t, e.docs.Hits(target), "the redirect is never followed")
+	})
+}
+
 func TestCIMDRefusesRequestObjects(t *testing.T) {
 	// Even when the DCR default scope grants openid, a metadata-document
 	// client never gets it, so fosite refuses every request object.
@@ -366,4 +408,19 @@ func TestCIMDDisabledIsUpstream(t *testing.T) {
 	loc = e.authorize(t, http.MethodGet, authorizeParams(claudeCodeID, loopbackReturn, "read", newPKCE()))
 	assert.Empty(t, loc.Query().Get("code"))
 	assert.Zero(t, e.docs.Hits(claudeCodeID))
+}
+
+// The runbook's block recipe: an admin client at a document's id is never
+// fetched or overwritten (C11), and its dead redirect refuses every authorize.
+func TestCIMDAdminRowBlocksClient(t *testing.T) {
+	e := newCIMDEnv(t, "", true, true, nil)
+	e.serve(claudeCodeID, map[string]any{"redirect_uris": []string{"http://localhost/callback"}})
+	require.NoError(t, e.reg.ClientManager().CreateClient(context.Background(), &client.Client{
+		ID: claudeCodeID, TokenEndpointAuthMethod: "none", RedirectURIs: []string{"https://blocked.invalid/"},
+		GrantTypes: []string{"authorization_code"}, ResponseTypes: []string{"code"}, Scope: "read",
+	}))
+	loc := e.authorize(t, http.MethodGet, authorizeParams(claudeCodeID, loopbackReturn, "read", newPKCE()))
+	assert.Empty(t, loc.Query().Get("code"), loc.String())
+	assert.Zero(t, e.logins.Load())
+	assert.Zero(t, e.docs.Hits(claudeCodeID), "an admin row is never fetched")
 }

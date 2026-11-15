@@ -4,13 +4,13 @@
 package client
 
 import (
-	"github.com/tidwall/gjson"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v3"
 	"github.com/gofrs/uuid"
+	"github.com/tidwall/gjson"
 	"github.com/twmb/murmur3"
 
 	"github.com/ory/pop/v6"

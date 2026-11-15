@@ -6,7 +6,6 @@ package cimd
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -108,14 +107,18 @@ func (m *Manager) GetClient(ctx context.Context, id string) (fosite.Client, erro
 		return m.inner.GetClient(ctx, id)
 	}
 	if err := ValidateClientIDURL(id, m.issuer); err != nil {
-		m.log(id, "invalid", err)
+		// Anyone can send any id: keep rejections out of the info log.
+		m.debug(id, "invalid", err)
 		return nil, errInvalidClient
 	}
 
-	row, err := m.store.GetConcreteClient(ctx, id)
+	row, err := m.lookup(ctx, id)
 	switch {
 	case errors.Is(err, sqlcon.ErrNoRows):
 		row = nil
+	case errors.Is(err, errIDMismatch):
+		m.debug(id, "id_mismatch", err)
+		return nil, errInvalidClient
 	case err != nil:
 		return nil, err
 	case !row.IsMetadataDocumentClient():
@@ -158,6 +161,11 @@ func (m *Manager) GetClient(ctx context.Context, id string) (fosite.Client, erro
 			m.remember(id, m.now(), true)
 		case errors.Is(err, ErrTransient):
 			m.remember(id, m.now(), false)
+			if row != nil {
+				// Once per failed refetch, not per waiting request: the
+				// HydraCIMDFetchFailing alert counts these lines.
+				m.log(id, "stale_served", err)
+			}
 		}
 		return c, err
 	})
@@ -174,7 +182,6 @@ func (m *Manager) GetClient(ctx context.Context, id string) (fosite.Client, erro
 		return nil, errInvalidClient
 	case errors.Is(err, ErrTransient):
 		if row != nil {
-			m.log(id, "stale_served", err)
 			return row, nil
 		}
 		return nil, errInvalidClient
@@ -211,11 +218,6 @@ func (m *Manager) resolve(ctx context.Context, id string) (_ *client.Client, err
 	c.Metadata = []byte(fmt.Sprintf(`{%q:{"fetched_at":%q,"expires_at":%q}}`,
 		client.MetadataDocumentKey, now.UTC().Format(time.RFC3339), expires.UTC().Format(time.RFC3339)))
 	if err := m.v.Validate(ctx, c); err != nil {
-		// The validator resolves jwks_uri: a DNS failure is not a verdict.
-		if dns := new(net.DNSError); errors.As(err, &dns) {
-			outcome = "unavailable"
-			return nil, errors.Wrap(ErrTransient, err.Error())
-		}
 		outcome = "invalid"
 		return nil, errors.Wrap(ErrInvalid, err.Error())
 	}
@@ -226,8 +228,11 @@ func (m *Manager) resolve(ctx context.Context, id string) (_ *client.Client, err
 		return nil, errors.Wrap(ErrInvalid, "scope would include openid")
 	}
 
-	existing, err := m.store.GetConcreteClient(ctx, id)
+	existing, err := m.lookup(ctx, id)
 	switch {
+	case errors.Is(err, errIDMismatch):
+		outcome = "id_mismatch"
+		return nil, errors.Wrap(ErrInvalid, err.Error())
 	case err == nil && !existing.IsMetadataDocumentClient():
 		outcome = "admin_row"
 		return existing, nil
@@ -238,7 +243,7 @@ func (m *Manager) resolve(ctx context.Context, id string) (_ *client.Client, err
 			return nil, err
 		}
 		outcome = "updated"
-		return m.store.GetConcreteClient(ctx, id)
+		return m.lookup(ctx, id)
 	case !errors.Is(err, sqlcon.ErrNoRows):
 		outcome = "store_error"
 		return nil, err
@@ -267,7 +272,19 @@ func (m *Manager) resolve(ctx context.Context, id string) (_ *client.Client, err
 	} else {
 		outcome = "created"
 	}
-	return m.store.GetConcreteClient(ctx, id)
+	return m.lookup(ctx, id)
+}
+
+// errIDMismatch is a row stored under another id that the database matched
+// anyway (a case-insensitive collation): never served for this id.
+var errIDMismatch = errors.New("cimd: the stored client has another id")
+
+func (m *Manager) lookup(ctx context.Context, id string) (*client.Client, error) {
+	c, err := m.store.GetConcreteClient(ctx, id)
+	if err == nil && c.ID != id {
+		return nil, errIDMismatch
+	}
+	return c, err
 }
 
 func outcomeOf(err error) string {
@@ -339,6 +356,10 @@ func (m *Manager) log(id, outcome string, err error) {
 		e = e.WithField("reason", err.Error())
 	}
 	e.Info("client metadata document")
+}
+
+func (m *Manager) debug(id, outcome string, err error) {
+	m.l.WithField("client_id", id).WithField("cimd_outcome", outcome).WithError(err).Debug("client metadata document")
 }
 
 func (m *Manager) logFetch(id, outcome string, start time.Time, err error) {

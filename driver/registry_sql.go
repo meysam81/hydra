@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/ory/hydra/v2/client/cimd"
 	"io/fs"
 	"net/http"
 	"sync"
@@ -24,6 +23,7 @@ import (
 	"github.com/ory/herodot"
 	"github.com/ory/hydra/v2/aead"
 	"github.com/ory/hydra/v2/client"
+	"github.com/ory/hydra/v2/client/cimd"
 	"github.com/ory/hydra/v2/consent"
 	"github.com/ory/hydra/v2/driver/config"
 	"github.com/ory/hydra/v2/fosite"
@@ -108,6 +108,15 @@ var (
 	_ registry          = (*RegistrySQL)(nil)
 )
 
+// CIMDHTTPClient fetches Client ID Metadata Documents and, while they are on,
+// jwks_uri key sets (WithCIMDHTTPClient replaces it in tests).
+func (m *RegistrySQL) CIMDHTTPClient() *http.Client {
+	if m.cimdHTTPClient != nil {
+		return m.cimdHTTPClient
+	}
+	return cimd.NewHTTPClient()
+}
+
 func (m *RegistrySQL) FositeClientManager() fosite.ClientManager {
 	ctx := contextx.RootContext
 	if !m.Config().CIMDEnabled(ctx) {
@@ -120,14 +129,10 @@ func (m *RegistrySQL) FositeClientManager() fosite.ClientManager {
 		return m.OAuth2Storage()
 	}
 	m.cimdOnce.Do(func() {
-		hc := m.cimdHTTPClient
-		if hc == nil {
-			hc = cimd.NewHTTPClient()
-		}
 		minTTL, maxTTL := m.Config().CIMDCacheTTL(ctx)
 		m.cimd = cimd.NewManager(
 			m.OAuth2Storage(), m.ClientManager(), m.ClientValidator(),
-			&cimd.Fetcher{HTTP: hc, MinTTL: minTTL, MaxTTL: maxTTL},
+			&cimd.Fetcher{HTTP: m.CIMDHTTPClient(), MinTTL: minTTL, MaxTTL: maxTTL},
 			cimd.Defaults{Scope: m.Config().DefaultClientScope(ctx)},
 			m.Config().IssuerURL(ctx), m.Logger(), time.Now,
 		)

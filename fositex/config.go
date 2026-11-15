@@ -8,6 +8,7 @@ import (
 	"crypto/sha512"
 	"hash"
 	"html/template"
+	"net/http"
 	"net/url"
 
 	"github.com/hashicorp/go-retryablehttp"
@@ -33,6 +34,8 @@ type (
 		httpx.ClientProvider
 		ClientHasher() fosite.Hasher
 		ExtraFositeFactories() []Factory
+		// CIMDHTTPClient fetches Client ID Metadata Documents.
+		CIMDHTTPClient() *http.Client
 	}
 	Factory func(config fosite.Configurator, storage fosite.Storage, strategy interface{}) interface{}
 	Config  struct {
@@ -110,10 +113,26 @@ func (c *Config) LoadDefaultHandlers(storage fosite.Storage, strategy interface{
 func (c *Config) GetJWKSFetcherStrategy(context.Context) fosite.JWKSFetcherStrategy {
 	if c.jwksFetcherStrategy == nil {
 		c.jwksFetcherStrategy = fosite.NewDefaultJWKSFetcherStrategy(fosite.JWKSFetcherWithHTTPClientSource(
-			func(ctx context.Context) *retryablehttp.Client { return c.deps.HTTPClient(ctx) },
+			c.JWKSHTTPClient,
 		))
 	}
 	return c.jwksFetcherStrategy
+}
+
+// JWKSHTTPClient is the client fosite fetches a client's jwks_uri with. While
+// Client ID Metadata Documents are on, any document author can make Hydra
+// fetch one, so it is the document client: no redirects, no retries, 5 s, no
+// proxy, port 443, public addresses only. It cannot tell a metadata-document
+// client from a registered one, so this holds for every client while on.
+func (c *Config) JWKSHTTPClient(ctx context.Context) *retryablehttp.Client {
+	if !c.deps.Config().CIMDEnabled(ctx) {
+		return c.deps.HTTPClient(ctx)
+	}
+	rc := retryablehttp.NewClient()
+	rc.HTTPClient = c.deps.CIMDHTTPClient()
+	rc.RetryMax = 0
+	rc.Logger = nil
+	return rc
 }
 
 func (c *Config) GetHTTPClient(ctx context.Context) *retryablehttp.Client {

@@ -52,6 +52,7 @@ func TestValidateClientIDURL(t *testing.T) {
 		"https://x.com/./c",
 		"https://x.com/" + strings.Repeat("a", 256-len("https://x.com/")),
 		"https://oauth2.example.com/c",
+		"https://oauth2.example.com./c",
 	} {
 		err := cimd.ValidateClientIDURL(id, issuer)
 		assert.ErrorIs(t, err, cimd.ErrInvalid, id)
@@ -152,6 +153,8 @@ func TestParseDocumentRejects(t *testing.T) {
 		"private_key_jwt without keys": doc(t, id, map[string]any{"token_endpoint_auth_method": "private_key_jwt"}),
 		"private_key_jwt with both":    doc(t, id, map[string]any{"token_endpoint_auth_method": "private_key_jwt", "jwks_uri": "https://app.example/j", "jwks": map[string]any{"keys": []any{}}}),
 		"http jwks_uri":                doc(t, id, map[string]any{"token_endpoint_auth_method": "private_key_jwt", "jwks_uri": "http://app.example/j"}),
+		"jwks_uri with a port":         doc(t, id, map[string]any{"token_endpoint_auth_method": "private_key_jwt", "jwks_uri": "https://app.example:8443/j"}),
+		"jwks_uri with user info":      doc(t, id, map[string]any{"token_endpoint_auth_method": "private_key_jwt", "jwks_uri": "https://u:p@app.example/j"}),
 		"no redirect_uris":             doc(t, id, map[string]any{"redirect_uris": nil}),
 		"empty redirect_uris":          doc(t, id, map[string]any{"redirect_uris": []string{}}),
 		"only implicit grant":          doc(t, id, map[string]any{"grant_types": []string{"implicit"}}),

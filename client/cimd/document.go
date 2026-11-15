@@ -70,7 +70,7 @@ func ValidateClientIDURL(id string, issuer *url.URL) error {
 		return invalid("client_id has a query")
 	case u.EscapedPath() == "" || u.EscapedPath() == "/":
 		return invalid("client_id has no path")
-	case issuer != nil && strings.EqualFold(u.Hostname(), issuer.Hostname()):
+	case issuer != nil && strings.EqualFold(strings.TrimRight(u.Hostname(), "."), strings.TrimRight(issuer.Hostname(), ".")):
 		return invalid("client_id is on the issuer's host")
 	}
 	if strings.IndexFunc(u.Hostname(), func(r rune) bool { return r <= ' ' || r > '~' }) >= 0 {
@@ -246,8 +246,9 @@ func keySet(c *client.Client, doc document) error {
 		return invalid("private_key_jwt needs exactly one of jwks and jwks_uri")
 	case doc.JWKSURI != "":
 		u, err := url.Parse(doc.JWKSURI)
-		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
-			return invalid("jwks_uri is not an https URL")
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Port() != "" {
+			// No port: while CIMD is on, key sets are fetched on 443 only.
+			return invalid("jwks_uri is not an https URL on the default port")
 		}
 		c.JSONWebKeysURI = doc.JWKSURI
 	default:
