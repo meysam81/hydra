@@ -19,6 +19,10 @@ func (f *Fosite) WriteAuthorizeResponse(ctx context.Context, rw http.ResponseWri
 	wh.Set("Cache-Control", "no-store")
 	wh.Set("Pragma", "no-cache")
 
+	if iss := authorizationResponseIssuer(ctx, f.Config); iss != "" {
+		resp.AddParameter("iss", iss)
+	}
+
 	redir := ar.GetRedirectURI()
 	switch rm := ar.GetResponseMode(); rm {
 	case ResponseModeFormPost:
@@ -64,4 +68,18 @@ func (f *Fosite) WriteAuthorizeResponse(ctx context.Context, rw http.ResponseWri
 func sendRedirect(url string, rw http.ResponseWriter) {
 	rw.Header().Set("Location", url)
 	rw.WriteHeader(http.StatusSeeOther)
+}
+
+// AuthorizationResponseIssuerProvider names the issuer every authorization
+// response carries as the iss parameter (RFC 9207). An empty issuer, or a
+// configuration without this method, sends none.
+type AuthorizationResponseIssuerProvider interface {
+	GetAuthorizationResponseIssuer(ctx context.Context) string
+}
+
+func authorizationResponseIssuer(ctx context.Context, c Configurator) string {
+	if p, ok := c.(AuthorizationResponseIssuerProvider); ok {
+		return p.GetAuthorizationResponseIssuer(ctx)
+	}
+	return ""
 }

@@ -4,6 +4,7 @@
 package client
 
 import (
+	"github.com/tidwall/gjson"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,11 @@ import (
 	"github.com/ory/hydra/v2/x"
 	"github.com/ory/x/sqlxx"
 )
+
+// MetadataDocumentKey is the Metadata key that marks a client resolved from
+// an OAuth Client ID Metadata Document (client/cimd). Its value records when
+// the document was fetched and until when it is used.
+const MetadataDocumentKey = "cimd"
 
 var (
 	_ fosite.OpenIDConnectClient = (*Client)(nil)
@@ -481,6 +487,16 @@ func (c *Client) IsPublic() bool {
 	return c.TokenEndpointAuthMethod == "none"
 }
 
+// AllowsLocalhostLoopback lets a metadata-document client's
+// http://localhost redirects match any port, as its IP-literal ones do.
+func (c *Client) AllowsLocalhostLoopback() bool { return c.IsMetadataDocumentClient() }
+
+// IsMetadataDocumentClient reports whether c was resolved from a Client ID
+// Metadata Document (client/cimd) rather than registered.
+func (c *Client) IsMetadataDocumentClient() bool {
+	return gjson.GetBytes(c.Metadata, MetadataDocumentKey).IsObject()
+}
+
 func (c *Client) GetJSONWebKeysURI() string {
 	return c.JSONWebKeysURI
 }
@@ -515,6 +531,7 @@ func (c *Client) GetRequestURIs() []string {
 }
 
 var _ fosite.ClientWithCustomTokenLifespans = &Client{}
+var _ fosite.LocalhostLoopbackClient = (*Client)(nil)
 
 func (c *Client) GetEffectiveLifespan(gt fosite.GrantType, tt fosite.TokenType, fallback time.Duration) time.Duration {
 	var cl *time.Duration

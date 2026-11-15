@@ -459,6 +459,18 @@ type oidcConfiguration struct {
 	//
 	// JSON array containing a list of the Verifiable Credentials supported by this authorization server.
 	CredentialsSupportedDraft00 []CredentialSupportedDraft00 `json:"credentials_supported_draft_00"`
+
+	// Client ID Metadata Document Supported
+	//
+	// Whether an https client_id is resolved by fetching its Client ID Metadata
+	// Document (draft-ietf-oauth-client-id-metadata-document). Omitted when off.
+	ClientIDMetadataDocumentSupported bool `json:"client_id_metadata_document_supported,omitempty"`
+
+	// Authorization Response Issuer Parameter Supported
+	//
+	// Whether authorization responses carry the iss parameter (RFC 9207).
+	// Omitted when off.
+	AuthorizationResponseIssParameterSupported bool `json:"authorization_response_iss_parameter_supported,omitempty"`
 }
 
 // Verifiable Credentials Metadata (Draft 00)
@@ -516,36 +528,38 @@ func (h *Handler) discoverOidcConfiguration(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	h.r.Writer().Write(w, r, &oidcConfiguration{
-		Issuer:                                 h.c.IssuerURL(ctx).String(),
-		AuthURL:                                h.c.OAuth2AuthURL(ctx).String(),
-		DeviceAuthorizationURL:                 h.c.OAuth2DeviceAuthorisationURL(ctx).String(),
-		TokenURL:                               h.c.OAuth2TokenURL(ctx).String(),
-		JWKsURI:                                h.c.JWKSURL(ctx).String(),
-		RevocationEndpoint:                     urlx.AppendPaths(h.c.IssuerURL(ctx), RevocationPath).String(),
-		RegistrationEndpoint:                   h.c.OAuth2ClientRegistrationURL(ctx).String(),
-		SubjectTypes:                           h.c.SubjectTypesSupported(ctx),
-		ResponseTypes:                          []string{"code", "code id_token", "id_token", "token id_token", "token", "token id_token code"},
-		ClaimsSupported:                        h.c.OIDCDiscoverySupportedClaims(ctx),
-		ScopesSupported:                        h.c.OIDCDiscoverySupportedScope(ctx),
-		UserinfoEndpoint:                       h.c.OIDCDiscoveryUserinfoEndpoint(ctx).String(),
-		TokenEndpointAuthMethodsSupported:      []string{"client_secret_post", "client_secret_basic", "private_key_jwt", "none"},
-		IDTokenSigningAlgValuesSupported:       []string{key.Algorithm},
-		IDTokenSignedResponseAlg:               []string{key.Algorithm},
-		UserinfoSignedResponseAlg:              []string{key.Algorithm},
-		GrantTypesSupported:                    []string{"authorization_code", "implicit", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
-		ResponseModesSupported:                 []string{"query", "fragment", "form_post"},
-		UserinfoSigningAlgValuesSupported:      []string{"none", key.Algorithm},
-		RequestParameterSupported:              true,
-		RequestURIParameterSupported:           true,
-		RequireRequestURIRegistration:          true,
-		BackChannelLogoutSupported:             true,
-		BackChannelLogoutSessionSupported:      true,
-		FrontChannelLogoutSupported:            true,
-		FrontChannelLogoutSessionSupported:     true,
-		EndSessionEndpoint:                     urlx.AppendPaths(h.c.IssuerURL(ctx), LogoutPath).String(),
-		RequestObjectSigningAlgValuesSupported: []string{"none", "RS256", "ES256"},
-		CodeChallengeMethodsSupported:          []string{"plain", "S256"},
-		CredentialsEndpointDraft00:             h.c.CredentialsEndpointURL(ctx).String(),
+		Issuer:                                     h.c.IssuerURL(ctx).String(),
+		AuthURL:                                    h.c.OAuth2AuthURL(ctx).String(),
+		DeviceAuthorizationURL:                     h.c.OAuth2DeviceAuthorisationURL(ctx).String(),
+		TokenURL:                                   h.c.OAuth2TokenURL(ctx).String(),
+		JWKsURI:                                    h.c.JWKSURL(ctx).String(),
+		RevocationEndpoint:                         urlx.AppendPaths(h.c.IssuerURL(ctx), RevocationPath).String(),
+		RegistrationEndpoint:                       h.c.OAuth2ClientRegistrationURL(ctx).String(),
+		SubjectTypes:                               h.c.SubjectTypesSupported(ctx),
+		ResponseTypes:                              []string{"code", "code id_token", "id_token", "token id_token", "token", "token id_token code"},
+		ClaimsSupported:                            h.c.OIDCDiscoverySupportedClaims(ctx),
+		ScopesSupported:                            h.c.OIDCDiscoverySupportedScope(ctx),
+		UserinfoEndpoint:                           h.c.OIDCDiscoveryUserinfoEndpoint(ctx).String(),
+		TokenEndpointAuthMethodsSupported:          []string{"client_secret_post", "client_secret_basic", "private_key_jwt", "none"},
+		IDTokenSigningAlgValuesSupported:           []string{key.Algorithm},
+		IDTokenSignedResponseAlg:                   []string{key.Algorithm},
+		UserinfoSignedResponseAlg:                  []string{key.Algorithm},
+		GrantTypesSupported:                        []string{"authorization_code", "implicit", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
+		ResponseModesSupported:                     []string{"query", "fragment", "form_post"},
+		UserinfoSigningAlgValuesSupported:          []string{"none", key.Algorithm},
+		RequestParameterSupported:                  true,
+		RequestURIParameterSupported:               true,
+		RequireRequestURIRegistration:              true,
+		BackChannelLogoutSupported:                 true,
+		BackChannelLogoutSessionSupported:          true,
+		FrontChannelLogoutSupported:                true,
+		FrontChannelLogoutSessionSupported:         true,
+		EndSessionEndpoint:                         urlx.AppendPaths(h.c.IssuerURL(ctx), LogoutPath).String(),
+		RequestObjectSigningAlgValuesSupported:     []string{"none", "RS256", "ES256"},
+		CodeChallengeMethodsSupported:              []string{"plain", "S256"},
+		CredentialsEndpointDraft00:                 h.c.CredentialsEndpointURL(ctx).String(),
+		ClientIDMetadataDocumentSupported:          h.c.CIMDEnabled(ctx),
+		AuthorizationResponseIssParameterSupported: h.c.CIMDEnabled(ctx),
 		CredentialsSupportedDraft00: []CredentialSupportedDraft00{{
 			Format:                               "jwt_vc_json",
 			Types:                                []string{"VerifiableCredential", "UserInfoCredential"},

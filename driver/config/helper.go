@@ -23,6 +23,17 @@ func Validate(ctx context.Context, l *logrusx.Logger, p *DefaultProvider) error 
 		return errors.New("issuer URL scheme must be HTTPS unless development mode is enabled")
 	}
 
+	// Hydra fetches metadata documents and their jwks_uri for anyone who asks:
+	// the private-range guard must hold for every client URL, without holes.
+	if p.CIMDEnabled(ctx) {
+		if !p.ClientHTTPNoPrivateIPRanges() {
+			return errors.Errorf("%s requires %s to be true", KeyCIMDEnabled, KeyClientHTTPNoPrivateIPRanges)
+		}
+		if len(p.ClientHTTPPrivateIPExceptionURLs()) > 0 {
+			return errors.Errorf("%s requires %s to be empty", KeyCIMDEnabled, KeyClientHTTPPrivateIPExceptionURLs)
+		}
+	}
+
 	return nil
 }
 

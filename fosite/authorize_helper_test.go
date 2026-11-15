@@ -344,3 +344,45 @@ func ParseURLFragment(fragment string) url.Values {
 	}
 	return r
 }
+
+// loopbackClient is a client that opts into port-agnostic localhost redirects.
+type loopbackClient struct {
+	*fosite.DefaultClient
+	allow bool
+}
+
+func (c loopbackClient) AllowsLocalhostLoopback() bool { return c.allow }
+
+func TestMatchRedirectURILocalhostLoopback(t *testing.T) {
+	registered := []string{"http://localhost/callback", "http://127.0.0.1/callback"}
+	optedIn := loopbackClient{DefaultClient: &fosite.DefaultClient{RedirectURIs: registered}, allow: true}
+	optedOut := loopbackClient{DefaultClient: &fosite.DefaultClient{RedirectURIs: registered}, allow: false}
+	plain := &fosite.DefaultClient{RedirectURIs: registered}
+
+	_, err := fosite.MatchRedirectURIWithClientRedirectURIs("http://localhost:53111/callback", optedIn)
+	require.NoError(t, err)
+	for _, uri := range []string{
+		"http://localhost:53111/other",
+		"https://localhost:53111/callback",
+		"http://localhost:53111/callback?x=1",
+		"http://localhost.evil.example:53111/callback",
+	} {
+		_, err := fosite.MatchRedirectURIWithClientRedirectURIs(uri, optedIn)
+		assert.Error(t, err, uri)
+	}
+
+	for name, c := range map[string]fosite.Client{"opted out": optedOut, "plain client": plain} {
+		_, err := fosite.MatchRedirectURIWithClientRedirectURIs("http://localhost:53111/callback", c)
+		assert.Error(t, err, name)
+	}
+
+	for name, c := range map[string]fosite.Client{"opted in": optedIn, "opted out": optedOut, "plain client": plain} {
+		_, err := fosite.MatchRedirectURIWithClientRedirectURIs("http://127.0.0.1:1/callback", c)
+		assert.NoError(t, err, name)
+	}
+
+	// 127.0.0.1 and localhost are separate registrations, never cross-matched.
+	only127 := loopbackClient{DefaultClient: &fosite.DefaultClient{RedirectURIs: []string{"http://127.0.0.1/callback"}}, allow: true}
+	_, err = fosite.MatchRedirectURIWithClientRedirectURIs("http://localhost:53111/callback", only127)
+	assert.Error(t, err)
+}

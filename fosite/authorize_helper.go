@@ -69,7 +69,7 @@ func MatchRedirectURIWithClientRedirectURIs(rawurl string, client Client) (*url.
 			// If no redirect_uri was given and the client has exactly one valid redirect_uri registered, use that instead
 			return redirectURIFromClient, nil
 		}
-	} else if redirectTo, ok := isMatchingRedirectURI(rawurl, client.GetRedirectURIs()); rawurl != "" && ok {
+	} else if redirectTo, ok := isMatchingRedirectURI(rawurl, client.GetRedirectURIs(), allowsLocalhostLoopback(client)); rawurl != "" && ok {
 		// If a redirect_uri was given and the clients knows it (simple string comparison!)
 		// return it.
 		if parsed, err := url.Parse(redirectTo); err == nil && IsValidRedirectURI(parsed) {
@@ -96,7 +96,7 @@ func MatchRedirectURIWithClientRedirectURIs(rawurl string, client Client) (*url.
 //
 // Loopback redirect URIs use the "http" scheme and are constructed with
 // the loopback IP literal and whatever port the client is listening on.
-func isMatchingRedirectURI(uri string, haystack []string) (string, bool) {
+func isMatchingRedirectURI(uri string, haystack []string, localhost bool) (string, bool) {
 	requested, err := url.Parse(uri)
 	if err != nil {
 		return "", false
@@ -105,7 +105,7 @@ func isMatchingRedirectURI(uri string, haystack []string) (string, bool) {
 	for _, b := range haystack {
 		if b == uri {
 			return b, true
-		} else if isMatchingAsLoopback(requested, b) {
+		} else if isMatchingAsLoopback(requested, b, localhost) {
 			// We have to return the requested URL here because otherwise the port might get lost (see isMatchingAsLoopback)
 			// description.
 			return uri, true
@@ -114,7 +114,7 @@ func isMatchingRedirectURI(uri string, haystack []string) (string, bool) {
 	return "", false
 }
 
-func isMatchingAsLoopback(requested *url.URL, registeredURI string) bool {
+func isMatchingAsLoopback(requested *url.URL, registeredURI string, localhost bool) bool {
 	registered, err := url.Parse(registeredURI)
 	if err != nil {
 		return false
@@ -130,7 +130,7 @@ func isMatchingAsLoopback(requested *url.URL, registeredURI string) bool {
 	//
 	// Source: https://tools.ietf.org/html/rfc8252#section-7.3
 	if requested.Scheme == "http" &&
-		isLoopbackAddress(requested.Hostname()) &&
+		(isLoopbackAddress(requested.Hostname()) || (localhost && requested.Hostname() == "localhost")) &&
 		registered.Hostname() == requested.Hostname() &&
 		// The port is skipped here - see codedoc above!
 		registered.Path == requested.Path &&
@@ -139,6 +139,20 @@ func isMatchingAsLoopback(requested *url.URL, registeredURI string) bool {
 	}
 
 	return false
+}
+
+// LocalhostLoopbackClient is a client whose loopback redirects may also use
+// the "localhost" hostname with any port. RFC 8252 only promises this for IP
+// literals; Hydra enables it for clients resolved from a Client ID Metadata
+// Document, whose published redirects (http://localhost/callback) carry no
+// port.
+type LocalhostLoopbackClient interface {
+	AllowsLocalhostLoopback() bool
+}
+
+func allowsLocalhostLoopback(c Client) bool {
+	l, ok := c.(LocalhostLoopbackClient)
+	return ok && l.AllowsLocalhostLoopback()
 }
 
 // Check if address is either an IPv4 loopback or an IPv6 loopback.

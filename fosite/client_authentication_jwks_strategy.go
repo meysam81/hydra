@@ -6,6 +6,7 @@ package fosite
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"time"
 
 	"github.com/dgraph-io/ristretto/v2"
@@ -36,6 +37,10 @@ type DefaultJWKSFetcherStrategy struct {
 }
 
 // NewDefaultJWKSFetcherStrategy returns a new instance of the DefaultJWKSFetcherStrategy.
+// maxJWKSSize bounds a fetched key set: a jwks_uri is client-supplied, and an
+// endless body would otherwise be decoded into memory.
+const maxJWKSSize = 1 << 20
+
 func NewDefaultJWKSFetcherStrategy(opts ...func(*DefaultJWKSFetcherStrategy)) JWKSFetcherStrategy {
 	dc, err := ristretto.NewCache(&ristretto.Config[string, *jose.JSONWebKeySet]{
 		NumCounters: 10000 * 10,
@@ -121,7 +126,7 @@ func (s *DefaultJWKSFetcherStrategy) Resolve(ctx context.Context, location strin
 		}
 
 		var set jose.JSONWebKeySet
-		if err := json.NewDecoder(response.Body).Decode(&set); err != nil {
+		if err := json.NewDecoder(io.LimitReader(response.Body, maxJWKSSize)).Decode(&set); err != nil {
 			return nil, errorsx.WithStack(ErrServerError.WithHintf("Unable to decode JSON Web Keys from location '%s'. Please check for typos and if the URL returns valid JSON.", location).WithWrap(err).WithDebug(err.Error()))
 		}
 

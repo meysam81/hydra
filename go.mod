@@ -8,6 +8,7 @@ replace (
 )
 
 require (
+	code.dny.dev/ssrf v0.2.0
 	github.com/ThalesGroup/crypto11 v1.4.1
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/bradleyjkemp/cupaloy/v2 v2.8.0
@@ -71,7 +72,6 @@ require (
 )
 
 require (
-	code.dny.dev/ssrf v0.2.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
