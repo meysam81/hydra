@@ -401,3 +401,18 @@ func TestFositeClientManagerSwitch(t *testing.T) {
 	require.True(t, isManager)
 	assert.Same(t, m, on.FositeClientManager(), "one manager per registry")
 }
+
+// A metadata-document client never authenticates with a shared secret, so
+// its stored secret must not be the hash of the empty string (which an
+// absent client_secret would match for a private_key_jwt client).
+func TestManagerCreatedClientHasUnusableSecret(t *testing.T) {
+	f := newFixture(t, stubValidator{})
+	const id = "https://chatgpt.com/oauth/client.json"
+	f.srv.Set(id, cimdtest.Response{Header: cacheHeader, Body: testdata(t, "chatgpt")})
+	_, err := f.m.GetClient(t.Context(), id)
+	require.NoError(t, err)
+
+	row := f.row(t, id)
+	require.NotEmpty(t, row.Secret)
+	assert.Error(t, f.reg.ClientHasher().Compare(t.Context(), []byte(row.Secret), []byte("")), "an empty client_secret must not authenticate")
+}

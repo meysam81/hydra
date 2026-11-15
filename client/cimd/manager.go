@@ -17,6 +17,7 @@ import (
 
 	"github.com/ory/hydra/v2/client"
 	"github.com/ory/hydra/v2/fosite"
+	"github.com/ory/hydra/v2/x"
 	"github.com/ory/x/logrusx"
 	"github.com/ory/x/popx"
 	"github.com/ory/x/sqlcon"
@@ -237,6 +238,15 @@ func (m *Manager) resolve(ctx context.Context, id string) (_ *client.Client, err
 		return nil, errCapped
 	}
 	c.CreatedAt, c.UpdatedAt = now, now
+	// Never disclosed and never used: without it Hydra would store the hash
+	// of "", which an absent client_secret matches for a private_key_jwt
+	// client. Updates keep it (UpdateClient keeps the hash of an empty Secret).
+	secret, err := x.GenerateSecret(26)
+	if err != nil {
+		outcome = "store_error"
+		return nil, err
+	}
+	c.Secret = string(secret)
 	if err := m.store.CreateClient(ctx, c); err != nil {
 		if !errors.Is(err, sqlcon.ErrUniqueViolation) {
 			outcome = "store_error"

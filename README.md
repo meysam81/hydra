@@ -3,7 +3,8 @@
 > project.** It rebuilds released versions of Ory Hydra with a current Go
 > toolchain and patched dependencies, so security fixes ship between upstream
 > releases. Hydra's own code is unchanged, apart from upstream commits
-> cherry-picked from `master` where a bumped dependency needs them.
+> cherry-picked from `master` where a bumped dependency needs them, and one
+> feature patch: OAuth Client ID Metadata Documents (below).
 >
 > - Each `patched-vX.Y.Z` branch is the upstream tag `vX.Y.Z` plus:
 >   dependency bumps in `go.mod` / `go.sum`, those cherry-picks (each names its
@@ -13,6 +14,17 @@
 > - Images: `ghcr.io/meysam81/hydra:vX.Y.Z`, the distroless build for
 >   `linux/amd64` and `linux/arm64`. The tag moves with every rebuild, so pin it
 >   by digest.
+> - The feature patch, CIMD
+>   ([draft-ietf-oauth-client-id-metadata-document](https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/)):
+>   an `https://` `client_id` is resolved by fetching the JSON document it
+>   names (`client/cimd`). Off by default; `oauth2.client_id_metadata_document`
+>   holds `enabled`, `cache.min_ttl` and `cache.max_ttl`, and turning it on
+>   requires `clients.http.disallow_private_ip_ranges: true` with no
+>   `private_ip_exception_urls`. While on, discovery advertises
+>   `client_id_metadata_document_supported`, authorization responses carry
+>   `iss` (RFC 9207), and these clients' `http://localhost` redirects match any
+>   port. Always on: a fetched `jwks_uri` is read up to 1 MiB. An image without
+>   this patch refuses a config that sets these keys.
 > - Every image passes upstream's test suite and is signed with cosign
 >   (keyless), with SBOM and SLSA provenance attached:
 >
@@ -22,8 +34,8 @@
 >     --certificate-identity-regexp '^https://github.com/meysam81/hydra/\.github/workflows/rebuild\.yml@refs/heads/patched-v'
 >   ```
 >
-> Report Hydra bugs and vulnerabilities upstream. Everything below is upstream's
-> README.
+> Report Hydra bugs and vulnerabilities upstream, CIMD ones here. Everything
+> below is upstream's README.
 
 <h1 align="center">
   <img src="https://raw.githubusercontent.com/ory/meta/master/static/banners/hydra.svg" alt="Ory Hydra - Open Source OAuth 2 and OpenID Connect server">
