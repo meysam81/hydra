@@ -7,8 +7,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/ory/hydra/v2/client/cimd"
 	"io/fs"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -90,6 +92,9 @@ type RegistrySQL struct {
 	fositeFactories      []fositex.Factory
 	migrator             *sql.MigrationManager
 	dbOptsModifier       []func(details *pop.ConnectionDetails)
+	cimdHTTPClient       *http.Client
+	cimdOnce             sync.Once
+	cimd                 *cimd.Manager
 
 	keyManager     jwk.Manager
 	consentManager consent.Manager
@@ -104,7 +109,24 @@ var (
 )
 
 func (m *RegistrySQL) FositeClientManager() fosite.ClientManager {
-	return m.OAuth2Storage()
+	ctx := contextx.RootContext
+	if !m.Config().CIMDEnabled(ctx) {
+		return m.OAuth2Storage()
+	}
+	m.cimdOnce.Do(func() {
+		hc := m.cimdHTTPClient
+		if hc == nil {
+			hc = cimd.NewHTTPClient()
+		}
+		minTTL, maxTTL := m.Config().CIMDCacheTTL(ctx)
+		m.cimd = cimd.NewManager(
+			m.OAuth2Storage(), m.ClientManager(), m.ClientValidator(),
+			&cimd.Fetcher{HTTP: hc, MinTTL: minTTL, MaxTTL: maxTTL},
+			cimd.Defaults{Scope: m.Config().DefaultClientScope(ctx)},
+			m.Config().IssuerURL(ctx), m.Logger(), time.Now,
+		)
+	})
+	return m.cimd
 }
 
 // AuthorizeCodeStorage implements foauth2.AuthorizeCodeStorageProvider

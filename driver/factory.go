@@ -6,6 +6,7 @@ package driver
 import (
 	"context"
 	"io/fs"
+	"net/http"
 
 	"github.com/pkg/errors"
 
@@ -41,6 +42,7 @@ type (
 		kratos             kratos.Client
 		fop                fosite.OAuth2Provider
 		dbOptsModifier     []func(details *pop.ConnectionDetails)
+		cimdHTTPClient     *http.Client
 	}
 	OptionsModifier func(*options)
 
@@ -65,6 +67,14 @@ func WithConfigOptions(opts ...configx.OptionModifier) OptionsModifier {
 func WithDBOptionsModifier(f ...func(details *pop.ConnectionDetails)) OptionsModifier {
 	return func(o *options) {
 		o.dbOptsModifier = append(o.dbOptsModifier, f...)
+	}
+}
+
+// WithCIMDHTTPClient replaces the client that fetches Client ID Metadata
+// Documents (tests only; the default is cimd.NewHTTPClient).
+func WithCIMDHTTPClient(c *http.Client) OptionsModifier {
+	return func(o *options) {
+		o.cimdHTTPClient = c
 	}
 }
 
@@ -187,6 +197,7 @@ func New(ctx context.Context, opts ...OptionsModifier) (*RegistrySQL, error) {
 	r.kratos = o.kratos
 	r.fop = o.fop
 	r.dbOptsModifier = o.dbOptsModifier
+	r.cimdHTTPClient = o.cimdHTTPClient
 
 	if err = r.Init(ctx, o.skipNetworkInit, o.autoMigrate, o.extraMigrations, o.goMigrations); err != nil {
 		l.WithError(err).Error("Unable to initialize service registry.")

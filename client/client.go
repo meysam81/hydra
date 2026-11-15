@@ -4,6 +4,7 @@
 package client
 
 import (
+	"github.com/tidwall/gjson"
 	"strconv"
 	"strings"
 	"time"
@@ -484,6 +485,12 @@ func (c *Client) GetOwner() string {
 
 func (c *Client) IsPublic() bool {
 	return c.TokenEndpointAuthMethod == "none"
+}
+
+// IsMetadataDocumentClient reports whether c was resolved from a Client ID
+// Metadata Document (client/cimd) rather than registered.
+func (c *Client) IsMetadataDocumentClient() bool {
+	return gjson.GetBytes(c.Metadata, MetadataDocumentKey).IsObject()
 }
 
 func (c *Client) GetJSONWebKeysURI() string {
