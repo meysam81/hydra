@@ -487,6 +487,10 @@ func (c *Client) IsPublic() bool {
 	return c.TokenEndpointAuthMethod == "none"
 }
 
+// AllowsLocalhostLoopback lets a metadata-document client's
+// http://localhost redirects match any port, as its IP-literal ones do.
+func (c *Client) AllowsLocalhostLoopback() bool { return c.IsMetadataDocumentClient() }
+
 // IsMetadataDocumentClient reports whether c was resolved from a Client ID
 // Metadata Document (client/cimd) rather than registered.
 func (c *Client) IsMetadataDocumentClient() bool {
@@ -527,6 +531,7 @@ func (c *Client) GetRequestURIs() []string {
 }
 
 var _ fosite.ClientWithCustomTokenLifespans = &Client{}
+var _ fosite.LocalhostLoopbackClient = (*Client)(nil)
 
 func (c *Client) GetEffectiveLifespan(gt fosite.GrantType, tt fosite.TokenType, fallback time.Duration) time.Duration {
 	var cl *time.Duration
