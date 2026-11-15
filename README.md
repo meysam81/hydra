@@ -23,7 +23,8 @@
 >   `private_ip_exception_urls`. While on, discovery advertises
 >   `client_id_metadata_document_supported`, authorization responses carry
 >   `iss` (RFC 9207), and these clients' `http://localhost` redirects match any
->   port. Always on: a fetched `jwks_uri` is read up to 1 MiB. An image without
+>   port; every client's `jwks_uri` key set is fetched with the same client as
+>   the documents (no redirects, no retries, 5 s, port 443). Always on: a fetched `jwks_uri` is read up to 1 MiB. An image without
 >   this patch refuses a config that sets these keys.
 > - Every image passes upstream's test suite and is signed with cosign
 >   (keyless), with SBOM and SLSA provenance attached:
