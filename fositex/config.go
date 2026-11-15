@@ -219,6 +219,18 @@ func (c *Config) GetAccessTokenIssuer(ctx context.Context) string {
 	return c.deps.Config().IssuerURL(ctx).String()
 }
 
+// GetAuthorizationResponseIssuer is the RFC 9207 iss of authorization
+// responses: the discovery issuer while Client ID Metadata Documents are on
+// (the draft's §7 requires it), nothing otherwise.
+func (c *Config) GetAuthorizationResponseIssuer(ctx context.Context) string {
+	if !c.deps.Config().CIMDEnabled(ctx) {
+		return ""
+	}
+	return c.deps.Config().IssuerURL(ctx).String()
+}
+
+var _ fosite.AuthorizationResponseIssuerProvider = (*Config)(nil)
+
 func (c *Config) GetJWTScopeField(ctx context.Context) jwt.JWTScopeFieldEnum {
 	return c.deps.Config().GetJWTScopeField(ctx)
 }

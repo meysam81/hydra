@@ -16,6 +16,7 @@ import (
 
 	"github.com/ory/hydra/v2/driver"
 	"github.com/ory/hydra/v2/driver/config"
+	"github.com/ory/hydra/v2/fosite"
 	"github.com/ory/hydra/v2/internal/testhelpers"
 	"github.com/ory/hydra/v2/oauth2"
 	"github.com/ory/hydra/v2/x"
@@ -79,4 +80,19 @@ func TestDiscoveryCIMDFlags(t *testing.T) {
 		})
 		assert.Len(t, gjson.ParseBytes(body).Map(), len(gjson.ParseBytes(golden).Map())+2)
 	})
+}
+
+func TestAuthorizationResponseIssuer(t *testing.T) {
+	for _, on := range []bool{false, true} {
+		values := map[string]any{config.KeyIssuerURL: "https://op.example", config.KeyClientHTTPNoPrivateIPRanges: true, config.KeyCIMDEnabled: on}
+		reg := testhelpers.NewRegistryMemory(t, driver.WithConfigOptions(configx.WithValues(values)))
+		p, ok := reg.OAuth2ProviderConfig().(fosite.AuthorizationResponseIssuerProvider)
+		require.True(t, ok, "Hydra's fosite config implements the provider")
+		got := p.GetAuthorizationResponseIssuer(t.Context())
+		if !on {
+			assert.Empty(t, got, "no iss while CIMD is off")
+			continue
+		}
+		assert.Equal(t, gjson.GetBytes(discoveryBody(t, true), "issuer").String(), got, "iss is the discovery issuer, byte for byte")
+	}
 }

@@ -46,6 +46,9 @@ func (f *Fosite) WriteAuthorizeError(ctx context.Context, rw http.ResponseWriter
 
 	errors := rfcerr.ToValues()
 	errors.Set("state", ar.GetState())
+	if iss := authorizationResponseIssuer(ctx, f.Config); iss != "" {
+		errors.Set("iss", iss)
+	}
 
 	var redirectURIString string
 	if ar.GetResponseMode() == ResponseModeFormPost {
