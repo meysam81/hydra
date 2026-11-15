@@ -55,6 +55,9 @@ const (
 	KeyDSN                                       = "dsn"
 	KeyClientHTTPNoPrivateIPRanges               = "clients.http.disallow_private_ip_ranges"
 	KeyClientHTTPPrivateIPExceptionURLs          = "clients.http.private_ip_exception_urls"
+	KeyCIMDEnabled                               = "oauth2.client_id_metadata_document.enabled"
+	KeyCIMDMinTTL                                = "oauth2.client_id_metadata_document.cache.min_ttl"
+	KeyCIMDMaxTTL                                = "oauth2.client_id_metadata_document.cache.max_ttl"
 	KeyHasherAlgorithm                           = "oauth2.hashers.algorithm"
 	KeyBCryptCost                                = "oauth2.hashers.bcrypt.cost"
 	KeyPBKDF2Iterations                          = "oauth2.hashers.pbkdf2.iterations"
@@ -242,6 +245,17 @@ func (p *DefaultProvider) ClientHTTPNoPrivateIPRanges() bool {
 
 func (p *DefaultProvider) ClientHTTPPrivateIPExceptionURLs() []string {
 	return p.getProvider(contextx.RootContext).Strings(KeyClientHTTPPrivateIPExceptionURLs)
+}
+
+// CIMDEnabled reports whether https client_ids are resolved by fetching their
+// Client ID Metadata Document.
+func (p *DefaultProvider) CIMDEnabled(ctx context.Context) bool {
+	return p.getProvider(ctx).Bool(KeyCIMDEnabled)
+}
+
+// CIMDCacheTTL bounds how long a fetched metadata document is used.
+func (p *DefaultProvider) CIMDCacheTTL(ctx context.Context) (minTTL, maxTTL time.Duration) {
+	return p.getProvider(ctx).DurationF(KeyCIMDMinTTL, 5*time.Minute), p.getProvider(ctx).DurationF(KeyCIMDMaxTTL, 24*time.Hour)
 }
 
 func (p *DefaultProvider) AllowedTopLevelClaims(ctx context.Context) []string {

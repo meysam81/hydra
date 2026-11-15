@@ -814,6 +814,36 @@
             }
           }
         },
+        "client_id_metadata_document": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "OAuth Client ID Metadata Documents (draft-ietf-oauth-client-id-metadata-document): an https client_id is resolved by fetching the JSON document it names. Off by default. Requires clients.http.disallow_private_ip_ranges and an empty clients.http.private_ip_exception_urls.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Resolve https client_ids by fetching their metadata document, and advertise client_id_metadata_document_supported and the RFC 9207 iss parameter."
+            },
+            "cache": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "min_ttl": {
+                  "description": "Shortest time a fetched document is used before it is fetched again, whatever its Cache-Control says.",
+                  "default": "5m",
+                  "type": "string",
+                  "allOf": [{"$ref": "#/definitions/duration"}]
+                },
+                "max_ttl": {
+                  "description": "Longest time a fetched document is used before it is fetched again.",
+                  "default": "24h",
+                  "type": "string",
+                  "allOf": [{"$ref": "#/definitions/duration"}]
+                }
+              }
+            }
+          }
+        },
         "pkce": {
           "type": "object",
           "additionalProperties": false,
