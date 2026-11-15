@@ -369,6 +369,11 @@
               },
               "examples": [["email", "whatever", "read.photos"]]
             },
+            "supported_scope_only": {
+              "type": "boolean",
+              "default": false,
+              "description": "Advertise only supported_scope in scopes_supported, without the always-included `offline`, `offline_access` and `openid`. For deployments whose clients may not request those: some clients request every advertised scope."
+            },
             "userinfo_url": {
               "type": "string",
               "description": "A URL of the userinfo endpoint to be advertised at the OpenID Connect Discovery endpoint /.well-known/openid-configuration. Defaults to Ory Hydra's userinfo endpoint at /userinfo. Set this value if you want to handle this endpoint yourself.",

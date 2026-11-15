@@ -3,8 +3,9 @@
 > project.** It rebuilds released versions of Ory Hydra with a current Go
 > toolchain and patched dependencies, so security fixes ship between upstream
 > releases. Hydra's own code is unchanged, apart from upstream commits
-> cherry-picked from `master` where a bumped dependency needs them, and one
-> feature patch: OAuth Client ID Metadata Documents (below).
+> cherry-picked from `master` where a bumped dependency needs them, and two
+> feature patches: OAuth Client ID Metadata Documents and a configurable
+> advertised scope list (below).
 >
 > - Each `patched-vX.Y.Z` branch is the upstream tag `vX.Y.Z` plus:
 >   dependency bumps in `go.mod` / `go.sum`, those cherry-picks (each names its
@@ -26,6 +27,13 @@
 >   port; every client's `jwks_uri` key set is fetched with the same client as
 >   the documents (no redirects, no retries, 5 s, port 443). Always on: a fetched `jwks_uri` is read up to 1 MiB. An image without
 >   this patch refuses a config that sets these keys.
+> - The advertised scope list: with
+>   `webfinger.oidc_discovery.supported_scope_only: true`, discovery's
+>   `scopes_supported` is exactly `webfinger.oidc_discovery.supported_scope`,
+>   without the always-included `offline`, `offline_access` and `openid`. Some
+>   clients (ChatGPT) request every advertised scope and fail with
+>   `invalid_scope` when their registered scope lacks one. Off by default,
+>   which keeps upstream's list.
 > - Every image passes upstream's test suite and is signed with cosign
 >   (keyless), with SBOM and SLSA provenance attached:
 >

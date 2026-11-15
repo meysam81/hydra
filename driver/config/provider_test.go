@@ -130,6 +130,15 @@ func TestPublicAllowDynamicRegistration(t *testing.T) {
 	assert.True(t, value)
 }
 
+func TestOIDCDiscoverySupportedScopeOnly(t *testing.T) {
+	scope := configx.WithValue(KeyOIDCDiscoverySupportedScope, []string{"read", "offline_access"})
+	p := newProvider(t, scope)
+	assert.Equal(t, []string{"offline_access", "offline", "openid", "read"}, p.OIDCDiscoverySupportedScope(t.Context()))
+
+	p = newProvider(t, scope, configx.WithValue(KeyOIDCDiscoverySupportedScopeOnly, true))
+	assert.Equal(t, []string{"read", "offline_access"}, p.OIDCDiscoverySupportedScope(t.Context()))
+}
+
 func TestProviderIssuerURL(t *testing.T) {
 	p := newProvider(t, configx.WithValue(KeyIssuerURL, "http://hydra.localhost"))
 	assert.Equal(t, "http://hydra.localhost", p.IssuerURL(t.Context()).String())
