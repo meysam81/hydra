@@ -409,3 +409,18 @@ func TestCIMDDisabledIsUpstream(t *testing.T) {
 	assert.Empty(t, loc.Query().Get("code"))
 	assert.Zero(t, e.docs.Hits(claudeCodeID))
 }
+
+// The runbook's block recipe: an admin client at a document's id is never
+// fetched or overwritten (C11), and its dead redirect refuses every authorize.
+func TestCIMDAdminRowBlocksClient(t *testing.T) {
+	e := newCIMDEnv(t, "", true, true, nil)
+	e.serve(claudeCodeID, map[string]any{"redirect_uris": []string{"http://localhost/callback"}})
+	require.NoError(t, e.reg.ClientManager().CreateClient(context.Background(), &client.Client{
+		ID: claudeCodeID, TokenEndpointAuthMethod: "none", RedirectURIs: []string{"https://blocked.invalid/"},
+		GrantTypes: []string{"authorization_code"}, ResponseTypes: []string{"code"}, Scope: "read",
+	}))
+	loc := e.authorize(t, http.MethodGet, authorizeParams(claudeCodeID, loopbackReturn, "read", newPKCE()))
+	assert.Empty(t, loc.Query().Get("code"), loc.String())
+	assert.Zero(t, e.logins.Load())
+	assert.Zero(t, e.docs.Hits(claudeCodeID), "an admin row is never fetched")
+}

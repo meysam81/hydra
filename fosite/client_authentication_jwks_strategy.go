@@ -36,11 +36,11 @@ type DefaultJWKSFetcherStrategy struct {
 	clientSourceFunc func(ctx context.Context) *retryablehttp.Client
 }
 
-// NewDefaultJWKSFetcherStrategy returns a new instance of the DefaultJWKSFetcherStrategy.
 // maxJWKSSize bounds a fetched key set: a jwks_uri is client-supplied, and an
 // endless body would otherwise be decoded into memory.
 const maxJWKSSize = 1 << 20
 
+// NewDefaultJWKSFetcherStrategy returns a new instance of the DefaultJWKSFetcherStrategy.
 func NewDefaultJWKSFetcherStrategy(opts ...func(*DefaultJWKSFetcherStrategy)) JWKSFetcherStrategy {
 	dc, err := ristretto.NewCache(&ristretto.Config[string, *jose.JSONWebKeySet]{
 		NumCounters: 10000 * 10,

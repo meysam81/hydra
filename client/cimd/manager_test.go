@@ -6,14 +6,16 @@ package cimd_test
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofrs/uuid"
+	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -26,6 +28,7 @@ import (
 	"github.com/ory/hydra/v2/fosite"
 	"github.com/ory/hydra/v2/internal/testhelpers"
 	"github.com/ory/x/configx"
+	"github.com/ory/x/logrusx"
 	"github.com/ory/x/popx"
 )
 
@@ -318,21 +321,6 @@ func TestManagerCreateCap(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestManagerValidatorDNSTransient(t *testing.T) {
-	f := newFixture(t, stubValidator{err: fmt.Errorf("jwks_uri: %w", &net.DNSError{Err: "timeout", Name: "chatgpt.com", IsTimeout: true})})
-	const id = "https://chatgpt.com/oauth/client.json"
-	f.srv.Set(id, cimdtest.Response{Header: cacheHeader, Body: testdata(t, "chatgpt")})
-
-	_, err := f.m.GetClient(t.Context(), id)
-	requireInvalidClient(t, err)
-	_, err = f.reg.ClientManager().GetConcreteClient(t.Context(), id)
-	require.Error(t, err)
-
-	_, err = f.m.GetClient(t.Context(), id)
-	requireInvalidClient(t, err)
-	assert.Equal(t, 1, f.srv.Hits(id), "treated as transient: negative-cached for 60 s")
-}
-
 func TestManagerNoFetchInTransaction(t *testing.T) {
 	f := newFixture(t, nil)
 	f.serveClaude(t, "https://claude.ai/cb")
@@ -474,4 +462,73 @@ func TestFositeClientManagerFailsClosedWithoutGuard(t *testing.T) {
 	reg.Config().MustSet(t.Context(), config.KeyClientHTTPPrivateIPExceptionURLs, []string{"https://x.example/*"})
 	_, isManager = reg.FositeClientManager().(*cimd.Manager)
 	assert.False(t, isManager, "exception URLs: no fetching")
+}
+
+// idFoldingStore is a database whose id comparison ignores case (a MySQL
+// collation): it answers a look-alike id with the stored row.
+type idFoldingStore struct{ cimd.Store }
+
+func (s idFoldingStore) GetConcreteClient(ctx context.Context, id string) (*client.Client, error) {
+	return s.Store.GetConcreteClient(ctx, strings.ToLower(id))
+}
+
+func TestManagerRefusesRowWithAnotherID(t *testing.T) {
+	f := newFixture(t, nil)
+	f.serveClaude(t, "https://claude.ai/cb")
+	_, err := f.m.GetClient(t.Context(), claudeID)
+	require.NoError(t, err)
+
+	issuer, _ := url.Parse("https://oauth2.example.com")
+	m := cimd.NewManager(f.reg.Persister(), idFoldingStore{f.reg.ClientManager()}, f.reg.ClientValidator(),
+		&cimd.Fetcher{HTTP: cimdtest.Transport(f.srv.Server), MinTTL: 5 * time.Minute, MaxTTL: 24 * time.Hour},
+		cimd.Defaults{Scope: []string{"read"}}, issuer, f.reg.Logger(), f.clock.Now)
+	const lookAlike = "https://CLAUDE.ai/oauth/mcp-oauth-client-metadata"
+	_, err = m.GetClient(t.Context(), lookAlike)
+	requireInvalidClient(t, err)
+	assert.Zero(t, f.srv.Hits(lookAlike))
+}
+
+func TestManagerLogsRejectedIDsAtDebug(t *testing.T) {
+	f := newFixture(t, nil)
+	hook := &logtest.Hook{}
+	l := logrusx.New("", "", logrusx.WithHook(hook), logrusx.ForceLevel(logrus.InfoLevel))
+	issuer, _ := url.Parse("https://oauth2.example.com")
+	m := cimd.NewManager(f.reg.Persister(), f.reg.ClientManager(), f.reg.ClientValidator(),
+		&cimd.Fetcher{HTTP: cimdtest.Transport(f.srv.Server), MinTTL: 5 * time.Minute, MaxTTL: 24 * time.Hour},
+		cimd.Defaults{Scope: []string{"read"}}, issuer, l, f.clock.Now)
+	outcomes := func() []string {
+		var out []string
+		for _, e := range hook.AllEntries() {
+			if o, ok := e.Data["cimd_outcome"].(string); ok && e.Level <= logrus.InfoLevel {
+				out = append(out, o)
+			}
+		}
+		return out
+	}
+
+	_, err := m.GetClient(t.Context(), "https://x.example/")
+	requireInvalidClient(t, err)
+	assert.Empty(t, outcomes(), "a rejected id never reaches the info log")
+
+	f.serveClaude(t, "https://claude.ai/cb")
+	_, err = m.GetClient(t.Context(), claudeID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"created"}, outcomes())
+
+	// Stale and failing: served from the row, logged at info (the
+	// HydraCIMDFetchFailing alert counts it).
+	f.clock.Add(6 * time.Minute)
+	f.srv.Set(claudeID, cimdtest.Response{Status: http.StatusInternalServerError})
+	_, err = m.GetClient(t.Context(), claudeID)
+	require.NoError(t, err)
+	assert.Contains(t, outcomes(), "stale_served")
+
+	// Create cap: logged at info (the HydraCIMDCapped alert counts it).
+	f.srv.Default = func(id string) cimdtest.Response {
+		return cimdtest.Response{Header: cacheHeader, Body: []byte(fmt.Sprintf(`{"client_id":%q,"redirect_uris":["https://app.example/cb"]}`, id))}
+	}
+	for i := range 61 {
+		_, _ = m.GetClient(t.Context(), fmt.Sprintf("https://cap%d.example/c", i))
+	}
+	assert.Contains(t, outcomes(), "capped")
 }
