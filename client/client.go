@@ -20,6 +20,11 @@ import (
 	"github.com/ory/x/sqlxx"
 )
 
+// MetadataDocumentKey is the Metadata key that marks a client resolved from
+// an OAuth Client ID Metadata Document (client/cimd). Its value records when
+// the document was fetched and until when it is used.
+const MetadataDocumentKey = "cimd"
+
 var (
 	_ fosite.OpenIDConnectClient = (*Client)(nil)
 	_ fosite.Client              = (*Client)(nil)
