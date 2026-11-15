@@ -48,6 +48,7 @@ const (
 	KeyJWKSURL                                   = "webfinger.oidc_discovery.jwks_url"
 	KeyOIDCDiscoverySupportedClaims              = "webfinger.oidc_discovery.supported_claims"
 	KeyOIDCDiscoverySupportedScope               = "webfinger.oidc_discovery.supported_scope"
+	KeyOIDCDiscoverySupportedScopeOnly           = "webfinger.oidc_discovery.supported_scope_only"
 	KeyOIDCDiscoveryUserinfoEndpoint             = "webfinger.oidc_discovery.userinfo_url"
 	KeyOAuth2DeviceAuthorisationURL              = "webfinger.oidc_discovery.device_authorization_url"
 	KeySubjectTypesSupported                     = "oidc.subject_identifiers.supported_types"
@@ -671,10 +672,16 @@ func (p *DefaultProvider) OIDCDiscoverySupportedClaims(ctx context.Context) []st
 }
 
 func (p *DefaultProvider) OIDCDiscoverySupportedScope(ctx context.Context) []string {
+	configured := p.getProvider(ctx).Strings(KeyOIDCDiscoverySupportedScope)
+	// Clients that request every advertised scope (ChatGPT) fail with
+	// invalid_scope when their registered scope lacks one of the defaults.
+	if p.getProvider(ctx).Bool(KeyOIDCDiscoverySupportedScopeOnly) {
+		return stringslice.Unique(configured)
+	}
 	return stringslice.Unique(
 		append(
 			[]string{"offline_access", "offline", "openid"},
-			p.getProvider(ctx).Strings(KeyOIDCDiscoverySupportedScope)...,
+			configured...,
 		),
 	)
 }
