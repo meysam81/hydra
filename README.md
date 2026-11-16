@@ -3,9 +3,10 @@
 > project.** It rebuilds released versions of Ory Hydra with a current Go
 > toolchain and patched dependencies, so security fixes ship between upstream
 > releases. Hydra's own code is unchanged, apart from upstream commits
-> cherry-picked from `master` where a bumped dependency needs them, and two
-> feature patches: OAuth Client ID Metadata Documents and a configurable
-> advertised scope list (below).
+> cherry-picked from `master` where a bumped dependency needs them, two
+> feature patches (OAuth Client ID Metadata Documents and a configurable
+> advertised scope list) and one fix (registration replies leave out unset
+> optional metadata), all below.
 >
 > - Each `patched-vX.Y.Z` branch is the upstream tag `vX.Y.Z` plus:
 >   dependency bumps in `go.mod` / `go.sum`, those cherry-picks (each names its
@@ -34,6 +35,12 @@
 >   clients (ChatGPT) request every advertised scope and fail with
 >   `invalid_scope` when their registered scope lacks one. Off by default,
 >   which keeps upstream's list.
+> - Registration replies (RFC 7591 `POST /oauth2/register`, RFC 7592 `GET` and
+>   `PUT /oauth2/register/{id}`) leave out `client_uri`, `logo_uri`, `tos_uri`,
+>   `policy_uri` and `contacts` when the client never set them, instead of
+>   sending `""` and `null`. Strict clients (the MCP TypeScript SDK, so Claude
+>   Code) reject the empty `client_uri` and the null `contacts`. The admin API
+>   keeps the full shape.
 > - Every image passes upstream's test suite and is signed with cosign
 >   (keyless), with SBOM and SLSA provenance attached:
 >
