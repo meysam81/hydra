@@ -39,6 +39,31 @@ func NewHandler(r InternalRegistry) *Handler {
 	return &Handler{r: r}
 }
 
+// dynamicClient is a client as the public registration endpoints (RFC 7591,
+// RFC 7592) return it: optional metadata the client never registered is left
+// out instead of sent as "" or null, which strict clients reject (the MCP
+// TypeScript SDK refuses an empty client_uri and a null contacts). The admin API
+// keeps the full shape: its JSON Patch replace needs every path present.
+type dynamicClient struct {
+	*Client
+	ClientURI         string   `json:"client_uri,omitempty"`
+	LogoURI           string   `json:"logo_uri,omitempty"`
+	TermsOfServiceURI string   `json:"tos_uri,omitempty"`
+	PolicyURI         string   `json:"policy_uri,omitempty"`
+	Contacts          []string `json:"contacts,omitempty"`
+}
+
+func newDynamicClient(c *Client) *dynamicClient {
+	return &dynamicClient{
+		Client:            c,
+		ClientURI:         c.ClientURI,
+		LogoURI:           c.LogoURI,
+		TermsOfServiceURI: c.TermsOfServiceURI,
+		PolicyURI:         c.PolicyURI,
+		Contacts:          c.Contacts,
+	}
+}
+
 func (h *Handler) SetAdminRoutes(r *httprouterx.RouterAdmin) {
 	r.GET(ClientsHandlerPath, h.listOAuth2Clients)
 	r.POST(ClientsHandlerPath, h.createOAuth2Client)
@@ -156,7 +181,7 @@ func (h *Handler) createOidcDynamicClient(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.r.Writer().WriteCreated(w, r, urlx.MustJoin("admin", ClientsHandlerPath, url.PathEscape(c.GetID())), &c)
+	h.r.Writer().WriteCreated(w, r, urlx.MustJoin("admin", ClientsHandlerPath, url.PathEscape(c.GetID())), newDynamicClient(c))
 }
 
 func (h *Handler) CreateClient(r *http.Request, validator func(context.Context, *Client) error, isDynamic bool) (*Client, error) {
@@ -384,7 +409,7 @@ func (h *Handler) setOidcDynamicClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.r.Writer().Write(w, r, &c)
+	h.r.Writer().Write(w, r, newDynamicClient(&c))
 }
 
 // Patch OAuth 2.0 Client Parameters
@@ -666,7 +691,7 @@ func (h *Handler) getOidcDynamicClient(w http.ResponseWriter, r *http.Request) {
 
 	c.Secret = ""
 	c.Metadata = nil
-	h.r.Writer().Write(w, r, c)
+	h.r.Writer().Write(w, r, newDynamicClient(c))
 }
 
 // Delete OAuth2 Client Parameters
