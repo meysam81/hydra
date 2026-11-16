@@ -612,6 +612,34 @@ func TestHandler(t *testing.T) {
 			snapshotx.SnapshotT(t, newResponseSnapshot(body, res))
 		})
 
+		t.Run("case=dynamic registration replies leave out unset optional metadata", func(t *testing.T) {
+			unset := []string{"client_uri", "logo_uri", "tos_uri", "policy_uri", "contacts"}
+
+			created := createClient(t, &client.Client{RedirectURIs: []string{"http://localhost:3000/cb"}}, publicTs, client.DynClientsHandlerPath)
+			read, res := fetchWithBearerAuth(t, "GET", urlx.MustJoin(publicTs.URL, client.DynClientsHandlerPath, url.PathEscape(getClientID(created))), gjson.Get(created, "registration_access_token").String(), nil)
+			require.Equal(t, http.StatusOK, res.StatusCode, read)
+			admin, _ := fetch(t, urlx.MustJoin(adminTs.URL, client.ClientsHandlerPath, url.PathEscape(getClientID(created))))
+			for _, key := range unset {
+				assert.False(t, gjson.Get(created, key).Exists(), "create: %s in %s", key, created)
+				assert.False(t, gjson.Get(read, key).Exists(), "read: %s in %s", key, read)
+				assert.True(t, gjson.Get(admin, key).Exists(), "admin keeps %s: %s", key, admin)
+			}
+
+			set := createClient(t, &client.Client{
+				RedirectURIs:      []string{"http://localhost:3000/cb"},
+				ClientURI:         "https://client.example/",
+				LogoURI:           "https://client.example/logo.png",
+				TermsOfServiceURI: "https://client.example/tos",
+				PolicyURI:         "https://client.example/privacy",
+				Contacts:          []string{"help@client.example"},
+			}, publicTs, client.DynClientsHandlerPath)
+			assert.Equal(t, "https://client.example/", gjson.Get(set, "client_uri").String())
+			assert.Equal(t, "https://client.example/logo.png", gjson.Get(set, "logo_uri").String())
+			assert.Equal(t, "https://client.example/tos", gjson.Get(set, "tos_uri").String())
+			assert.Equal(t, "https://client.example/privacy", gjson.Get(set, "policy_uri").String())
+			assert.Equal(t, `["help@client.example"]`, gjson.Get(set, "contacts").Raw)
+		})
+
 		t.Run("case=update the lifespans of an OAuth2 client", func(t *testing.T) {
 			expected := &client.Client{
 				Name:                    "update-existing-client-lifespans",
